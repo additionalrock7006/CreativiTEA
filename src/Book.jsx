@@ -5,6 +5,9 @@ import OrderModal from "./Modal.jsx";
 import MenuPage from "./MenuPage.jsx";
 import CartDrawer from "./CartDrawer.jsx";
 import { useCart } from "./AddToCartSystem.jsx";
+import fallbackMenu from "../menu.json";
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
 const Page = forwardRef((props, ref) => {
   return (
@@ -17,6 +20,7 @@ const Page = forwardRef((props, ref) => {
     </div>
   );
 });
+
 Page.displayName = "Page";
 
 function getBookDimensions(viewportWidth, viewportHeight) {
@@ -39,8 +43,17 @@ function getBookDimensions(viewportWidth, viewportHeight) {
   return { isMobile: false, width, height };
 }
 
+function normalizeMenuData(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.items)) return data.items;
+  if (data && Array.isArray(data.menu)) return data.menu;
+  return [];
+}
+
 function Book() {
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState(() =>
+    normalizeMenuData(fallbackMenu)
+  );
   const [selectedItem, setSelectedItem] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [bookSize, setBookSize] = useState(() =>
@@ -62,13 +75,20 @@ function Book() {
   }, []);
 
   useEffect(() => {
-    fetch("http://localhost:7001/api/menu")
+    if (!API_BASE_URL) return;
+
+    fetch(`${API_BASE_URL}/api/menu`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
-      .then((data) => setProducts(Array.isArray(data) ? data : []))
-      .catch((err) => console.error("Failed to load menu:", err));
+      .then((data) => {
+        const items = normalizeMenuData(data);
+        if (items.length > 0) setProducts(items);
+      })
+      .catch((err) => {
+        console.warn("Using bundled menu fallback:", err);
+      });
   }, []);
 
   const byCategory = (category) =>
