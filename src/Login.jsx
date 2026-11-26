@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./css/Login.css";
+import { API_BASE_URL, apiUrl } from "./api.js";
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -13,10 +14,16 @@ function Login({ onLogin }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+
+    if (!API_BASE_URL) {
+      setError("Backend API URL is not configured yet.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("http://localhost:7001/api/auth/login", {
+      const res = await fetch(apiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
