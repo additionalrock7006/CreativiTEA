@@ -1,6 +1,9 @@
 import fallbackMenu from "../menu.json";
 
-export const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+const DEFAULT_LOCAL_API = import.meta.env.DEV ? "http://localhost:7001" : "";
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || DEFAULT_LOCAL_API
+).replace(/\/$/, "");
 
 export function normalizeMenuData(data) {
   if (Array.isArray(data)) return data;
