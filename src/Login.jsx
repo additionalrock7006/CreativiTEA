@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./css/Login.css";
-import { API_BASE_URL, apiUrl } from "./api.js";
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -16,60 +15,21 @@ function Login({ onLogin }) {
     setError("");
     setIsSubmitting(true);
 
-    const cleanUsername = username.trim();
-
-    // Demo mode fallback when no live backend API URL is configured
-    if (!API_BASE_URL) {
-      const demoRole = cleanUsername.toLowerCase().includes("owner")
-        ? "owner"
-        : "staff";
-      const demoSession = {
-        token: "demo-session-token",
-        role: demoRole,
-        username: cleanUsername || demoRole,
-      };
-
-      localStorage.setItem("token", demoSession.token);
-      localStorage.setItem("role", demoSession.role);
-      if (onLogin) onLogin(demoSession);
-
-      setIsSubmitting(false);
-      navigate(demoRole === "owner" ? "/owner" : "/staff");
-      return;
-    }
-
     try {
-      const res = await fetch(apiUrl("/api/auth/login"), {
+      const res = await fetch("http://localhost:7001/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: cleanUsername,
-          password,
-        }),
+        body: JSON.stringify({ username, password }),
       });
-
-      const rawText = await res.text();
-      let data = {};
-      try {
-        data = rawText ? JSON.parse(rawText) : {};
-      } catch {
-        data = {};
-      }
+      const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || data.message || "Invalid username or password");
-        return;
-      }
-
-      if (!data.token) {
-        setError("Server did not return an authentication token.");
+        setError(data.error || "Invalid username or password");
         return;
       }
 
       localStorage.setItem("token", data.token);
-      if (data.role) {
-        localStorage.setItem("role", data.role);
-      }
+      localStorage.setItem("role", data.role);
       if (onLogin) onLogin(data);
 
       navigate(data.role === "owner" ? "/owner" : "/staff");
