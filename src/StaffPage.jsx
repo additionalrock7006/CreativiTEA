@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./css/StaffPage.css";
+import { API_BASE_URL, apiUrl, getFallbackMenu, normalizeMenuData } from "./api.js";
 
 function formatTimestamp(createdAt) {
   if (!createdAt) return "Just now";
@@ -132,10 +133,10 @@ function formatOrderDetails(order, menuItem) {
 
 function StaffPage() {
   const [orders, setOrders] = useState([]);
-  const [menuItems, setMenuItems] = useState([]);
+  const [menuItems, setMenuItems] = useState(() => getFallbackMenu());
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [filter, setFilter] = useState("all"); // "all" | "active" | "completed"
+  const [filter, setFilter] = useState("all");
   const navigate = useNavigate();
 
   function handleAuthFailure() {
@@ -151,13 +152,18 @@ function StaffPage() {
       return;
     }
 
+    if (!API_BASE_URL) {
+      setStatus("Backend API URL is not configured yet.");
+      return;
+    }
+
     try {
       setIsLoading(true);
       setStatus("");
 
       const [menuRes, ordersRes] = await Promise.all([
-        fetch("http://localhost:7001/api/menu"),
-        fetch("http://localhost:7001/api/selections", {
+        fetch(apiUrl("/api/menu")),
+        fetch(apiUrl("/api/selections"), {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -176,7 +182,8 @@ function StaffPage() {
         );
       }
 
-      setMenuItems(Array.isArray(menuData) ? menuData : []);
+      const normalizedMenu = normalizeMenuData(menuData);
+      if (normalizedMenu.length > 0) setMenuItems(normalizedMenu);
       setOrders(Array.isArray(ordersData) ? ordersData : []);
     } catch (err) {
       setStatus(`Error: ${err.message}`);
@@ -186,6 +193,8 @@ function StaffPage() {
   }
 
   async function handleToggleComplete(order) {
+    if (!API_BASE_URL) return;
+
     const token = localStorage.getItem("token");
     if (!token) {
       navigate("/login", { replace: true });
@@ -196,7 +205,7 @@ function StaffPage() {
 
     try {
       setStatus("");
-      const res = await fetch(`http://localhost:7001/api/selections/${order.id}`, {
+      const res = await fetch(apiUrl(`/api/selections/${order.id}`), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -224,6 +233,8 @@ function StaffPage() {
   }
 
   async function handleDeleteOrder(id) {
+    if (!API_BASE_URL) return;
+
     const token = localStorage.getItem("token");
     if (!token) {
       navigate("/login", { replace: true });
@@ -232,7 +243,7 @@ function StaffPage() {
 
     try {
       setStatus("");
-      const res = await fetch(`http://localhost:7001/api/selections/${id}`, {
+      const res = await fetch(apiUrl(`/api/selections/${id}`), {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -322,142 +333,86 @@ function StaffPage() {
       </header>
 
       {status && (
-        <div className="staff-alert" role="alert">
+        <div className="staff-status" role="status">
           {status}
         </div>
       )}
 
-      {filteredOrders.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-state-title">
-            {orders.length === 0
-              ? "No incoming orders yet"
-              : `No ${filter} orders`}
-          </p>
-          <p className="empty-state-sub">
-            New customer orders will appear here when refreshed.
-          </p>
-        </div>
-      ) : (
-        <div className="orders-grid">
-          {filteredOrders.map((order) => {
-            const matchedMenu = resolveMenuItem(order, menuLookup);
-            const itemName =
-              matchedMenu?.name ||
+      <section className="orders-list">
+        {filteredOrders.length === 0 ? (
+          <p className="empty-orders">No orders to display.</p>
+        ) : (
+          filteredOrders.map((order) => {
+            const matchedItem = resolveMenuItem(order, menuLookup);
+            const { lines, calculatedAddonTotal } = formatOrderDetails(
+              order,
+              matchedItem
+            );
+            const itemTitle =
               order.itemName ||
               order.productName ||
               order.name ||
-              "Order Item";
-            const category = matchedMenu?.category || order.category;
-            const quantity = Number(order.quantity ?? order.qty ?? 1) || 1;
-            const { lines: optionLines, calculatedAddonTotal } =
-              formatOrderDetails(order, matchedMenu);
-
-            const unitBase =
+              matchedItem?.name ||
+              "Menu Item";
+            const quantity = Number(order.quantity || 1);
+            const unitPrice =
               order.unitPrice !== undefined
                 ? Number(order.unitPrice)
-                : matchedMenu?.basePrice !== undefined
-                ? Number(matchedMenu.basePrice)
-                : null;
-
-            const explicitTotal =
-              order.totalPrice ?? order.total ?? order.price;
-
-            const computedTotal =
-              explicitTotal !== undefined
-                ? Number(explicitTotal)
-                : unitBase !== null
-                ? (unitBase + calculatedAddonTotal) * quantity
-                : null;
-
-            const customer = order.customerName || order.customer;
-            const notes = order.notes || order.note || order.remarks;
+                : Number(matchedItem?.basePrice ?? matchedItem?.price ?? 0) +
+                  calculatedAddonTotal;
+            const totalPrice =
+              order.totalPrice !== undefined
+                ? Number(order.totalPrice)
+                : unitPrice * quantity;
 
             return (
               <article
                 key={order.id}
-                className={`order-card ${
-                  order.completed ? "is-completed" : ""
-                }`}
+                className={`order-card ${order.completed ? "is-completed" : ""}`}
               >
-                <div className="order-card-top">
-                  <div className="order-meta">
-                    <span className="order-id">#{order.id}</span>
-                    <span className="order-dot">•</span>
+                <div className="order-top">
+                  <div>
+                    <h3 className="order-item-title">
+                      {quantity}× {itemTitle}
+                    </h3>
                     <span className="order-time">
                       {formatTimestamp(order.createdAt)}
                     </span>
                   </div>
-                  <span
-                    className={`status-pill ${
-                      order.completed ? "done" : "pending"
-                    }`}
-                  >
-                    {order.completed ? "Completed" : "Preparing"}
-                  </span>
+                  <strong className="order-total">
+                    ₱{totalPrice.toFixed(2)}
+                  </strong>
                 </div>
 
-                <div className="order-body">
-                  <div className="order-item-row">
-                    <span className="order-qty">{quantity}×</span>
-                    <div className="order-item-info">
-                      <h3 className="order-item-name">{itemName}</h3>
-                      {category && (
-                        <span className="order-category">{category}</span>
-                      )}
-                    </div>
-                    {computedTotal !== null && !Number.isNaN(computedTotal) && (
-                      <span className="order-price">
-                        ₱{computedTotal.toFixed(2)}
-                      </span>
-                    )}
-                  </div>
-
-                  {customer && (
-                    <div className="order-customer">
-                      <span className="meta-label">Customer:</span> {customer}
-                    </div>
-                  )}
-
-                  {optionLines.length > 0 && (
-                    <ul className="order-options">
-                      {optionLines.map((line, i) => (
-                        <li key={i}>{line}</li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {notes && (
-                    <div className="order-notes">
-                      <strong>Note:</strong> {notes}
-                    </div>
-                  )}
-                </div>
+                {lines.length > 0 && (
+                  <ul className="order-options">
+                    {lines.map((line, idx) => (
+                      <li key={idx}>{line}</li>
+                    ))}
+                  </ul>
+                )}
 
                 <div className="order-actions">
                   <button
                     type="button"
-                    className={`btn-action ${
-                      order.completed ? "btn-undo" : "btn-complete"
-                    }`}
+                    className="btn-complete"
                     onClick={() => handleToggleComplete(order)}
                   >
-                    {order.completed ? "Undo Complete" : "✓ Mark Complete"}
+                    {order.completed ? "Mark Active" : "Mark Completed"}
                   </button>
                   <button
                     type="button"
-                    className="btn-action btn-delete"
+                    className="btn-delete"
                     onClick={() => handleDeleteOrder(order.id)}
-                    aria-label="Delete order"
                   >
                     Delete
                   </button>
                 </div>
               </article>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </section>
     </div>
   );
 }
