@@ -14,29 +14,62 @@ function Login({ onLogin }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+    setIsSubmitting(true);
 
+    const cleanUsername = username.trim();
+
+    // Demo mode fallback when no live backend API URL is configured
     if (!API_BASE_URL) {
-      setError("Backend API URL is not configured yet.");
+      const demoRole = cleanUsername.toLowerCase().includes("owner")
+        ? "owner"
+        : "staff";
+      const demoSession = {
+        token: "demo-session-token",
+        role: demoRole,
+        username: cleanUsername || demoRole,
+      };
+
+      localStorage.setItem("token", demoSession.token);
+      localStorage.setItem("role", demoSession.role);
+      if (onLogin) onLogin(demoSession);
+
+      setIsSubmitting(false);
+      navigate(demoRole === "owner" ? "/owner" : "/staff");
       return;
     }
-
-    setIsSubmitting(true);
 
     try {
       const res = await fetch(apiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({
+          username: cleanUsername,
+          password,
+        }),
       });
-      const data = await res.json();
+
+      const rawText = await res.text();
+      let data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = {};
+      }
 
       if (!res.ok) {
-        setError(data.error || "Invalid username or password");
+        setError(data.error || data.message || "Invalid username or password");
+        return;
+      }
+
+      if (!data.token) {
+        setError("Server did not return an authentication token.");
         return;
       }
 
       localStorage.setItem("token", data.token);
-      localStorage.setItem("role", data.role);
+      if (data.role) {
+        localStorage.setItem("role", data.role);
+      }
       if (onLogin) onLogin(data);
 
       navigate(data.role === "owner" ? "/owner" : "/staff");
