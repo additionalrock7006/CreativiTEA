@@ -10,8 +10,19 @@ const { requireAuth, requireRole, SECRET } = require("./views/middlewares/auth.j
 
 const app = express();
 const PORT = process.env.PORT || 7001;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://creativitea-3mclztggu-rivera-s-creativi-tea-website.vercel.app",
+    ],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 const MENU_FILE = path.join(__dirname, "menu.json");
@@ -102,9 +113,10 @@ app.put("/api/menu/:id", requireAuth, requireRole("owner"), (req, res) => {
 app.post("/api/selections", (req, res) => {
   try {
     const order = {
-      id: `ord_${Date.now()}`,
-      createdAt: new Date().toISOString(),
       ...req.body,
+      id: `ord_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      completed: false,
     };
 
     const orders = readJsonFile(ORDERS_FILE, []);
@@ -123,10 +135,75 @@ app.post("/api/selections", (req, res) => {
 app.get("/api/selections", requireAuth, requireRole("owner", "staff"), (req, res) => {
   try {
     const orders = readJsonFile(ORDERS_FILE, []);
-    res.json(orders);
+    let needsSave = false;
+
+    const normalizedOrders = orders.map((order, idx) => {
+      if (!order.id) {
+        needsSave = true;
+        return { ...order, id: `ord_legacy_${Date.now()}_${idx}` };
+      }
+      return order;
+    });
+
+    if (needsSave) {
+      writeJsonFile(ORDERS_FILE, normalizedOrders);
+    }
+
+    res.json(normalizedOrders);
   } catch (err) {
     console.error("Failed to read orders.json:", err);
     res.status(500).json({ message: "Failed to load orders" });
+  }
+});
+
+// Staff & Owner: Toggle or update order completion status
+app.patch("/api/selections/:id", requireAuth, requireRole("owner", "staff"), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { completed } = req.body || {};
+
+    const orders = readJsonFile(ORDERS_FILE, []);
+    const index = orders.findIndex((order) => String(order.id) === String(id));
+
+    if (index === -1) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const nextCompleted =
+      completed !== undefined ? Boolean(completed) : !orders[index].completed;
+
+    const updatedOrder = {
+      ...orders[index],
+      completed: nextCompleted,
+      completedAt: nextCompleted ? new Date().toISOString() : null,
+    };
+
+    orders[index] = updatedOrder;
+    writeJsonFile(ORDERS_FILE, orders);
+
+    res.json(updatedOrder);
+  } catch (err) {
+    console.error("Failed to update order:", err);
+    res.status(500).json({ message: "Failed to update order" });
+  }
+});
+
+// Staff & Owner: Delete a single order by ID
+app.delete("/api/selections/:id", requireAuth, requireRole("owner", "staff"), (req, res) => {
+  try {
+    const { id } = req.params;
+    const orders = readJsonFile(ORDERS_FILE, []);
+    const filteredOrders = orders.filter((order) => String(order.id) !== String(id));
+
+    if (filteredOrders.length === orders.length) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    writeJsonFile(ORDERS_FILE, filteredOrders);
+    res.json({ message: "Order deleted", id });
+  } catch (err) {
+    console.error("Failed to delete order:", err);
+    res.status(500).json({ message: "Failed to delete order" });
   }
 });
 
@@ -139,6 +216,11 @@ app.delete("/api/selections", requireAuth, requireRole("owner"), (req, res) => {
     console.error("Failed to clear orders.json:", err);
     res.status(500).json({ message: "Failed to clear selections" });
   }
+});
+
+// Fallback JSON 404 for unmatched /api routes
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
 });
 
 app.listen(PORT, () => {
