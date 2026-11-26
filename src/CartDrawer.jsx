@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCart } from "./AddToCartSystem.jsx";
+import { API_BASE_URL, apiUrl } from "./api.js";
 
 function CartDrawer({ isOpen, onClose }) {
   const { items, subtotal, updateQuantity, removeFromCart, clearCart } = useCart();
@@ -12,6 +13,11 @@ function CartDrawer({ isOpen, onClose }) {
   async function handleCheckout(e) {
     e.preventDefault();
     if (items.length === 0) return;
+
+    if (!API_BASE_URL) {
+      setFeedback("Online ordering backend isn't connected yet.");
+      return;
+    }
 
     setIsCheckingOut(true);
     setFeedback("");
@@ -30,7 +36,7 @@ function CartDrawer({ isOpen, onClose }) {
           ...(customerName.trim() ? { customerName: customerName.trim() } : {}),
         };
 
-        const response = await fetch("http://localhost:7001/api/selections", {
+        const response = await fetch(apiUrl("/api/selections"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
