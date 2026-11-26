@@ -1,17 +1,20 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import "./css/OwnerPage.css";
+import { API_BASE_URL, apiUrl, getFallbackMenu, normalizeMenuData } from "./api.js";
 
 function OwnerPage() {
-  const [menuItems, setMenuItems] = useState([]);
+  const [menuItems, setMenuItems] = useState(() => getFallbackMenu());
   const [selections, setSelections] = useState([]);
   const [status, setStatus] = useState({ message: "", type: "" });
   const [savingId, setSavingId] = useState(null);
 
   async function loadSelections() {
+    if (!API_BASE_URL) return;
+
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch("http://localhost:7001/api/selections", {
+      const res = await fetch(apiUrl("/api/selections"), {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -25,12 +28,17 @@ function OwnerPage() {
   }
 
   useEffect(() => {
-    fetch("http://localhost:7001/api/menu")
-      .then((res) => res.json())
-      .then((data) => setMenuItems(Array.isArray(data) ? data : []))
-      .catch((err) =>
-        setStatus({ message: `Menu error: ${err.message}`, type: "error" })
-      );
+    if (API_BASE_URL) {
+      fetch(apiUrl("/api/menu"))
+        .then((res) => res.json())
+        .then((data) => {
+          const items = normalizeMenuData(data);
+          if (items.length > 0) setMenuItems(items);
+        })
+        .catch((err) =>
+          setStatus({ message: `Menu error: ${err.message}`, type: "error" })
+        );
+    }
 
     loadSelections();
   }, []);
@@ -44,12 +52,20 @@ function OwnerPage() {
   }
 
   async function handleSave(item) {
+    if (!API_BASE_URL) {
+      setStatus({
+        message: "Backend API URL is not configured yet.",
+        type: "error",
+      });
+      return;
+    }
+
     const token = localStorage.getItem("token");
     setSavingId(item.id);
     setStatus({ message: "", type: "" });
 
     try {
-      const response = await fetch(`http://localhost:7001/api/menu/${item.id}`, {
+      const response = await fetch(apiUrl(`/api/menu/${item.id}`), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -82,9 +98,11 @@ function OwnerPage() {
   }
 
   async function handleClearSelections() {
+    if (!API_BASE_URL) return;
+
     const token = localStorage.getItem("token");
     try {
-      const response = await fetch("http://localhost:7001/api/selections", {
+      const response = await fetch(apiUrl("/api/selections"), {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -139,7 +157,6 @@ function OwnerPage() {
         </div>
       )}
 
-      {/* Summary Metrics */}
       <section className="metrics-grid">
         <div className="metric-card">
           <span className="metric-label">Menu Items</span>
@@ -155,7 +172,6 @@ function OwnerPage() {
         </div>
       </section>
 
-      {/* Menu Pricing Management */}
       <section className="owner-card">
         <div className="card-header">
           <div>
@@ -225,7 +241,6 @@ function OwnerPage() {
         </div>
       </section>
 
-      {/* Orders / Transactions Management */}
       <section className="owner-card">
         <div className="card-header card-header-flex">
           <div>
