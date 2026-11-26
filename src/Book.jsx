@@ -5,9 +5,7 @@ import OrderModal from "./Modal.jsx";
 import MenuPage from "./MenuPage.jsx";
 import CartDrawer from "./CartDrawer.jsx";
 import { useCart } from "./AddToCartSystem.jsx";
-import fallbackMenu from "../menu.json";
-
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+import { API_BASE_URL, apiUrl, getFallbackMenu, normalizeMenuData } from "./api.js";
 
 const Page = forwardRef((props, ref) => {
   return (
@@ -43,17 +41,8 @@ function getBookDimensions(viewportWidth, viewportHeight) {
   return { isMobile: false, width, height };
 }
 
-function normalizeMenuData(data) {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.items)) return data.items;
-  if (data && Array.isArray(data.menu)) return data.menu;
-  return [];
-}
-
 function Book() {
-  const [products, setProducts] = useState(() =>
-    normalizeMenuData(fallbackMenu)
-  );
+  const [products, setProducts] = useState(() => getFallbackMenu());
   const [selectedItem, setSelectedItem] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [bookSize, setBookSize] = useState(() =>
@@ -77,7 +66,7 @@ function Book() {
   useEffect(() => {
     if (!API_BASE_URL) return;
 
-    fetch(`${API_BASE_URL}/api/menu`)
+    fetch(apiUrl("/api/menu"))
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
