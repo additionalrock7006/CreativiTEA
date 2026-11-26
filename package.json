@@ -14,6 +14,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "ejs": "^7.0.2",
